@@ -1,0 +1,21 @@
+customer_id,first_name,last_name,email,phone,total_orders,total_spent,average_order_value,last_order_amount,city,state,loyalty_points
+CUST001,Alice,Example,alice@example.com,9876543210,14,12345.67,881.83,950.00,Bengaluru,Karnataka,1200
+CUST002,Bob,Example,bob@example.com,9876543211,6,4500.50,750.08,650.00,Hyderabad,Telangana,450
+CUST003,Ravi,Sharma,ravi@example.com,9876543212,10,8900.20,890.02,780.50,Delhi,Delhi,850
+CUST004,Neha,Verma,neha@example.com,9876543213,5,3200.75,640.15,500.00,Mumbai,Maharashtra,320
+CUST005,Amit,Singh,amit@example.com,9876543214,20,15000.00,750.00,1200.00,Pune,Maharashtra,1800
+CUST006,Pooja,Mehta,pooja@example.com,9876543215,7,4100.60,585.80,700.00,Chennai,Tamil Nadu,500
+CUST007,Rahul,Gupta,rahul@example.com,9876543216,12,9800.90,816.74,900.00,Kolkata,West Bengal,980
+CUST008,Sneha,Kapoor,sneha@example.com,9876543217,4,2300.40,575.10,450.00,Ahmedabad,Gujarat,210
+CUST009,Vikas,Yadav,vikas@example.com,9876543218,9,7600.80,844.53,850.00,Lucknow,Uttar Pradesh,720
+CUST010,Anjali,Desai,anjali@example.com,9876543219,8,5200.30,650.04,600.00,Bengaluru,Karnataka,600
+CUST011,Suresh,Reddy,suresh@example.com,9876543220,25,18000.50,720.02,1500.00,Hyderabad,Telangana,2400
+CUST012,Karan,Malhotra,karan@example.com,9876543221,11,6100.70,554.61,650.00,Delhi,Delhi,650
+CUST013,Meera,Iyer,meera@example.com,9876543222,13,9400.20,723.09,850.00,Chennai,Tamil Nadu,980
+CUST014,Arjun,Nair,arjun@example.com,9876543223,10,8700.50,870.05,920.00,Kochi,Kerala,900
+CUST015,Divya,Jain,divya@example.com,9876543224,5,2900.90,580.18,520.00,Delhi,Delhi,250
+CUST016,Nikhil,Bansal,nikhil@example.com,9876543225,15,11200.40,746.69,990.00,Pune,Maharashtra,1250
+CUST017,Isha,Khanna,isha@example.com,9876543226,8,5400.60,675.08,700.00,Mumbai,Maharashtra,540
+CUST018,Harsh,Vardhan,harsh@example.com,9876543227,12,9900.30,825.03,980.00,Delhi,Delhi,990
+CUST019,Komal,Sharma,komal@example.com,9876543228,6,3800.50,633.42,600.00,Jaipur,Rajasthan,390
+CUST020,Manish,Agarwal,manish@example.com,9876543229,22,16000.90,727.31,1350.00,Bengaluru,Karnataka,2100
