@@ -4,22 +4,27 @@ import random
 
 app = Flask(__name__)
 
-# Native pure Python K-Means clustering implementation as a bulletproof fallback
+# Fields that are categorical (text) and need one-hot encoding instead of normalization
+CATEGORICAL_FIELDS = {'city', 'state'}
+
+# Native pure Python K-Means clustering implementation (works for any number of dimensions)
 def custom_kmeans(data, k, max_iters=100):
     """
     Pure Python K-Means clustering.
-    data: list of lists [totalSpend, purchaseCount]
+    data: list of feature vectors, each vector is a list of floats (any length/dimension)
     """
     if not data:
-        return []
-    
+        return [], []
+
+    dims = len(data[0])
+
     # 1. Initialize centroids randomly from points
-    centroids = random.sample(data, min(k, len(data)))
+    centroids = [list(p) for p in random.sample(data, min(k, len(data)))]
     while len(centroids) < k:
-        centroids.append([0.0, 0.0]) # Padding if fewer data points than k
+        centroids.append([0.0] * dims)  # Padding if fewer data points than k
 
     assignments = [0] * len(data)
-    
+
     for _ in range(max_iters):
         # 2. Assign each point to the nearest centroid
         changed = False
@@ -27,134 +32,164 @@ def custom_kmeans(data, k, max_iters=100):
             min_dist = float('inf')
             best_cluster = 0
             for cluster_idx, centroid in enumerate(centroids):
-                dist = math.sqrt((point[0] - centroid[0])**2 + (point[1] - centroid[1])**2)
+                dist = math.sqrt(sum((point[d] - centroid[d]) ** 2 for d in range(dims)))
                 if dist < min_dist:
                     min_dist = dist
                     best_cluster = cluster_idx
-            
+
             if assignments[i] != best_cluster:
                 assignments[i] = best_cluster
                 changed = True
-        
-        # If no assignments changed, we are done
+
         if not changed:
             break
-            
+
         # 3. Recalculate centroids
-        cluster_sums = [[0.0, 0.0] for _ in range(k)]
+        cluster_sums = [[0.0] * dims for _ in range(k)]
         cluster_counts = [0] * k
-        
+
         for i, cluster_idx in enumerate(assignments):
-            cluster_sums[cluster_idx][0] += data[i][0]
-            cluster_sums[cluster_idx][1] += data[i][1]
+            for d in range(dims):
+                cluster_sums[cluster_idx][d] += data[i][d]
             cluster_counts[cluster_idx] += 1
-            
+
         for c in range(k):
             if cluster_counts[c] > 0:
-                centroids[c] = [
-                    cluster_sums[c][0] / cluster_counts[c],
-                    cluster_sums[c][1] / cluster_counts[c]
-                ]
-                
+                centroids[c] = [cluster_sums[c][d] / cluster_counts[c] for d in range(dims)]
+
     return assignments, centroids
+
+
+def build_feature_vectors(customers, feature_keys):
+    """
+    Builds normalized numeric feature vectors from raw customer dicts.
+    - Numeric fields (total_spent, total_orders, average_order_value, last_order_amount,
+      loyalty_points, etc.) are min-max normalized.
+    - Categorical fields (city, state) are one-hot encoded based on the distinct values
+      present in this batch of customers.
+    Returns (vectors, cust_ids)
+    """
+    numeric_keys = [f for f in feature_keys if f not in CATEGORICAL_FIELDS]
+    categorical_keys = [f for f in feature_keys if f in CATEGORICAL_FIELDS]
+
+    cust_ids = [c.get('id') or c.get('customer_id') for c in customers]
+
+    # --- Numeric feature extraction + min-max normalization ---
+    raw_numeric = []
+    for c in customers:
+        row = [float(c.get(key, 0.0) or 0.0) for key in numeric_keys]
+        raw_numeric.append(row)
+
+    normalized_numeric = []
+    if numeric_keys:
+        mins = [min(row[i] for row in raw_numeric) for i in range(len(numeric_keys))]
+        maxs = [max(row[i] for row in raw_numeric) for i in range(len(numeric_keys))]
+        spans = [(maxs[i] - mins[i]) if (maxs[i] - mins[i]) > 0 else 1.0 for i in range(len(numeric_keys))]
+
+        for row in raw_numeric:
+            normalized_numeric.append([(row[i] - mins[i]) / spans[i] for i in range(len(numeric_keys))])
+    else:
+        normalized_numeric = [[] for _ in customers]
+
+    # --- Categorical feature extraction + one-hot encoding ---
+    categorical_encoded = [[] for _ in customers]
+    for key in categorical_keys:
+        # Collect distinct values for this field, preserving stable order
+        distinct_values = sorted({str(c.get(key, 'Unknown') or 'Unknown') for c in customers})
+        value_index = {val: idx for idx, val in enumerate(distinct_values)}
+
+        for i, c in enumerate(customers):
+            one_hot = [0.0] * len(distinct_values)
+            val = str(c.get(key, 'Unknown') or 'Unknown')
+            one_hot[value_index[val]] = 1.0
+            categorical_encoded[i].extend(one_hot)
+
+    # --- Combine numeric + categorical into final vectors ---
+    vectors = [normalized_numeric[i] + categorical_encoded[i] for i in range(len(customers))]
+
+    return vectors, cust_ids
+
 
 @app.route('/ml/segment', methods=['POST'])
 def segment_customers():
     """
-    Receives list of Customer objects:
-    [
-      { "id": "1", "totalSpend": 22400.0, "purchaseCount": 18, "productCategories": [...] },
-      ...
-    ]
+    Expects JSON body:
+    {
+      "k": 5,
+      "features": ["total_spent", "total_orders", "average_order_value", "city", "state"],
+      "customers": [
+        { "id": "1", "total_spent": 22400.0, "total_orders": 18, "average_order_value": 1244.4,
+          "last_order_amount": 500.0, "loyalty_points": 320, "city": "Mumbai", "state": "MH" },
+        ...
+      ]
+    }
     Returns mapping of: { "customer_id": "segment_label" }
     """
     try:
-        customers = request.json
+        payload = request.json
+        if not payload:
+            return jsonify({"error": "No data received"}), 400
+
+        customers = payload.get('customers')
+        feature_keys = payload.get('features')
+        k_clusters = int(payload.get('k', 5))
+
         if not customers:
             return jsonify({"error": "No customer data received"}), 400
+        if not feature_keys:
+            return jsonify({"error": "No features selected"}), 400
+        if k_clusters < 1:
+            return jsonify({"error": "k must be at least 1"}), 400
 
-        # Extract features for K-Means (totalSpend and purchaseCount)
-        # We normalize to prevent totalSpend scale from dominating purchaseCount
-        raw_features = []
-        cust_ids = []
-        for c in customers:
-            spend = float(c.get('totalSpend', 0.0))
-            count = float(c.get('purchaseCount', 0.0))
-            raw_features.append([spend, count])
-            cust_ids.append(c.get('id'))
+        vectors, cust_ids = build_feature_vectors(customers, feature_keys)
 
-        if not raw_features:
-            return jsonify({"error": "Failed to parse features"}), 400
+        if not vectors or not vectors[0]:
+            return jsonify({"error": "Failed to build feature vectors from selected features"}), 400
 
-        # Normalization (Min-Max)
-        spends = [f[0] for f in raw_features]
-        counts = [f[1] for f in raw_features]
-        
-        min_spend, max_spend = min(spends), max(spends)
-        min_count, max_count = min(counts), max(counts)
-        
-        span_spend = (max_spend - min_spend) if (max_spend - min_spend) > 0 else 1.0
-        span_count = (max_count - min_count) if (max_count - min_count) > 0 else 1.0
+        if k_clusters > len(vectors):
+            k_clusters = len(vectors)
 
-        normalized_features = []
-        for f in raw_features:
-            norm_spend = (f[0] - min_spend) / span_spend
-            norm_count = (f[1] - min_count) / span_count
-            normalized_features.append([norm_spend, norm_count])
+        assignments, centroids = custom_kmeans(vectors, k_clusters)
 
-        # Run clustering
-        k_clusters = 5
-        assignments, centroids = custom_kmeans(normalized_features, k_clusters)
-
-        # Map cluster labels to meaningful Segment Names based on centroid averages
-        # High centroid values = High value loyal, Low centroid values = Dormant/New
-        centroid_values = []
+        # Rank clusters by average vector magnitude (proxy for "value") to assign labels
+        cluster_scores = []
         for c in range(k_clusters):
-            # Calculate average unnormalized spend and count for this cluster
-            c_points = [raw_features[i] for i, ass in enumerate(assignments) if ass == c]
+            c_points = [vectors[i] for i, ass in enumerate(assignments) if ass == c]
             if c_points:
-                avg_sp = sum(p[0] for p in c_points) / len(c_points)
-                avg_co = sum(p[1] for p in c_points) / len(c_points)
+                avg_score = sum(sum(p) for p in c_points) / len(c_points)
             else:
-                avg_sp, avg_co = 0.0, 0.0
-            centroid_values.append((c, avg_sp, avg_co))
+                avg_score = 0.0
+            cluster_scores.append((c, avg_score))
 
-        # Sort clusters by spend and count to assign labels dynamically
-        sorted_centroids = sorted(centroid_values, key=lambda x: (x[1] * 0.7 + x[2] * 0.3), reverse=True)
-        
-        cluster_to_label = {}
+        sorted_clusters = sorted(cluster_scores, key=lambda x: x[1], reverse=True)
+
         labels = [
-            "High value loyal",    # Highest spend & frequency
-            "Regular buyers",      # Good spend & frequency
-            "New customers",       # Low frequency but moderate spend
-            "At-risk customers",   # Falling frequency
-            "Dormant"              # Lowest spend & frequency
+            "High value loyal",
+            "Regular buyers",
+            "New customers",
+            "At-risk customers",
+            "Dormant",
         ]
 
-        # In case k is different or smaller
-        for rank, item in enumerate(sorted_centroids):
-            c_idx = item[0]
-            if rank < len(labels):
-                cluster_to_label[c_idx] = labels[rank]
-            else:
-                cluster_to_label[c_idx] = "At-risk customers"
+        cluster_to_label = {}
+        for rank, (c_idx, _) in enumerate(sorted_clusters):
+            cluster_to_label[c_idx] = labels[rank] if rank < len(labels) else "At-risk customers"
 
-        # Construct final mapping response
         result = {}
         for i, cust_id in enumerate(cust_ids):
             cluster_assigned = assignments[i]
-            label = cluster_to_label.get(cluster_assigned, "Regular buyers")
-            result[cust_id] = label
+            result[cust_id] = cluster_to_label.get(cluster_assigned, "Regular buyers")
 
         return jsonify(result), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "healthy", "service": "retailiq-ml"}), 200
 
+
 if __name__ == '__main__':
-    # Run Flask App
     app.run(host='0.0.0.0', port=5001, debug=True)

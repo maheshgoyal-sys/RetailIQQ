@@ -4,15 +4,29 @@ import { segmentAPI, authAPI } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function RunMl() {
-  const [algorithm, setAlgorithm] = useState('K_MEANS');
+  // Backend only implements K-Means clustering — algorithm is fixed, no selector needed
+  const algorithm = 'K_MEANS';
   const [k, setK] = useState(5);
+  // Features map to actual fields available on the Customer record (populated via CSV upload)
   const [features, setFeatures] = useState({
-    totalSpent: true,
-    frequency: true,
-    recency: true,
-    age: false,
-    cityTier: false,
+    total_spent: true,
+    total_orders: true,
+    average_order_value: true,
+    last_order_amount: false,
+    loyalty_points: false,
+    city: false,
+    state: false,
   });
+
+  const featureLabels = {
+    total_spent: 'Total spent',
+    total_orders: 'Purchase frequency (total orders)',
+    average_order_value: 'Average order value',
+    last_order_amount: 'Last order amount',
+    loyalty_points: 'Loyalty points',
+    city: 'City (location)',
+    state: 'State (location)',
+  };
   const [running, setRunning] = useState(false);
 
   const user = authAPI.getUser();
@@ -35,10 +49,16 @@ export default function RunMl() {
       toast.error('Guest mode is read-only. Login to run live segmentation.');
       return;
     }
+
+    const selectedList = getSelectedFeaturesList();
+    if (selectedList.length === 0) {
+      toast.error('Select at least one feature to run K-Means.');
+      return;
+    }
+
     setRunning(true);
     const loader = toast.loading('Contacting API Gateway and invoking Python Flask service...');
     try {
-      const selectedList = getSelectedFeaturesList();
       const res = await segmentAPI.runSegmentation(k, selectedList);
       toast.success(res.message || 'K-Means clustering completed! Customers re-assigned.', { id: loader });
     } catch (error) {
@@ -84,18 +104,13 @@ export default function RunMl() {
             <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider mt-1">POST /api/ml/segment</p>
           </div>
 
-          {/* Algorithm selector */}
+          {/* Algorithm - fixed to K-Means since that's the only model implemented */}
           <div className="space-y-2">
             <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Algorithm</label>
-            <select
-              value={algorithm}
-              onChange={(e) => setAlgorithm(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 focus:border-primary-500 rounded-xl py-3 px-4 text-slate-800 text-sm outline-none font-semibold transition-all"
-            >
-              <option value="K_MEANS">K-Means Clustering</option>
-              <option value="DBSCAN">DBSCAN Density Clustering</option>
-              <option value="AGGLOMERATIVE">Hierarchical Clustering</option>
-            </select>
+            <div className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-slate-800 text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-500" />
+              <span>K-Means Clustering</span>
+            </div>
           </div>
 
           {/* Clusters Slider */}
@@ -117,55 +132,17 @@ export default function RunMl() {
           <div className="space-y-2">
             <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Features to use</label>
             <div className="flex flex-col gap-2 mt-1">
-              <label className="flex items-center gap-3 cursor-pointer text-sm font-semibold text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={features.totalSpent}
-                  onChange={() => handleCheckboxChange('totalSpent')}
-                  className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500 accent-primary-600"
-                />
-                <span>Total spent</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer text-sm font-semibold text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={features.frequency}
-                  onChange={() => handleCheckboxChange('frequency')}
-                  className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500 accent-primary-600"
-                />
-                <span>Purchase frequency</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer text-sm font-semibold text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={features.recency}
-                  onChange={() => handleCheckboxChange('recency')}
-                  className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500 accent-primary-600"
-                />
-                <span>Recency</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer text-sm font-semibold text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={features.age}
-                  onChange={() => handleCheckboxChange('age')}
-                  className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500 accent-primary-600"
-                />
-                <span>Age</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer text-sm font-semibold text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={features.cityTier}
-                  onChange={() => handleCheckboxChange('cityTier')}
-                  className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500 accent-primary-600"
-                />
-                <span>City tier</span>
-              </label>
+              {Object.keys(features).map((key) => (
+                <label key={key} className="flex items-center gap-3 cursor-pointer text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={features[key]}
+                    onChange={() => handleCheckboxChange(key)}
+                    className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500 accent-primary-600"
+                  />
+                  <span>{featureLabels[key] || key}</span>
+                </label>
+              ))}
             </div>
           </div>
 

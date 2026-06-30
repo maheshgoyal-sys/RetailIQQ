@@ -8,13 +8,22 @@ export const runMlSegmentation = async (req, res) => {
   try {
     const { algorithm, k, features } = req.body;
 
-    // 1. Fetch all customers
+    if (!features || features.length === 0) {
+      return res.status(400).json({ error: "No features selected" });
+    }
+
+    // 1. Fetch all customers with every field the ML service might need
     const customers = await prisma.customer.findMany({
       select: {
         id: true,
         customer_id: true,
         total_spent: true,
         total_orders: true,
+        average_order_value: true,
+        last_order_amount: true,
+        loyalty_points: true,
+        city: true,
+        state: true,
       }
     });
 
@@ -22,20 +31,31 @@ export const runMlSegmentation = async (req, res) => {
       return res.status(400).json({ error: "No customers found to segment" });
     }
 
-    // 2. Format data for ML service
-    const mlPayload = customers.map(c => ({
+    // 2. Format data for ML service — keep field names matching `features` keys exactly
+    //    (total_spent, total_orders, average_order_value, last_order_amount, loyalty_points, city, state)
+    const mlCustomers = customers.map(c => ({
       id: c.id,
-      totalSpend: c.total_spent,
-      purchaseCount: c.total_orders
+      total_spent: c.total_spent ?? 0,
+      total_orders: c.total_orders ?? 0,
+      average_order_value: c.average_order_value ?? 0,
+      last_order_amount: c.last_order_amount ?? 0,
+      loyalty_points: c.loyalty_points ?? 0,
+      city: c.city || 'Unknown',
+      state: c.state || 'Unknown',
     }));
 
-    // 3. Call ML Service
-    const mlResponse = await axios.post(`${ML_SERVICE_URL}/ml/segment`, mlPayload);
+    // 3. Call ML Service with the new payload shape: { k, features, customers }
+    const mlResponse = await axios.post(`${ML_SERVICE_URL}/ml/segment`, {
+      k: k || 5,
+      features,
+      customers: mlCustomers,
+    });
+
     const segmentMapping = mlResponse.data; // { "customer_id_uuid": "Segment Name" }
 
     // 4. Update database with results
     const uniqueSegments = [...new Set(Object.values(segmentMapping))];
-    
+
     // Ensure segment records exist
     const segmentMap = {};
     for (const segmentName of uniqueSegments) {
@@ -61,14 +81,17 @@ export const runMlSegmentation = async (req, res) => {
       }
     }
 
-    res.status(200).json({ 
+    res.status(200).json({
       message: `Successfully segmented ${updateCount} customers into ${uniqueSegments.length} segments.`,
       segments: uniqueSegments
     });
 
   } catch (error) {
-    console.error("Error running ML segmentation:", error);
-    res.status(500).json({ error: "Failed to run segmentation" });
+    console.error("Error running ML segmentation:", error?.response?.data || error.message);
+    res.status(500).json({
+      error: "Failed to run segmentation",
+      details: error?.response?.data?.error || error.message
+    });
   }
 };
 
@@ -81,7 +104,7 @@ export const getSegments = async (req, res) => {
         }
       }
     });
-    
+
     // Map to frontend expectation
     const formatted = segments.map(seg => ({
       id: seg.id,
@@ -103,7 +126,7 @@ export const getSegments = async (req, res) => {
 export const getSegmentSummary = async (req, res) => {
   try {
     const totalCustomers = await prisma.customer.count();
-    
+
     const segments = await prisma.segment.findMany({
       include: {
         _count: {
@@ -127,4 +150,3 @@ export const getSegmentSummary = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
-
