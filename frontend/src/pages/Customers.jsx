@@ -37,15 +37,22 @@ export default function Customers() {
   // Modal States
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [formName, setFormName] = useState('');
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [viewCustomer, setViewCustomer] = useState(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
+  // Form fields now match backend schema exactly (Prisma Customer model)
+  const [formFirstName, setFormFirstName] = useState('');
+  const [formLastName, setFormLastName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
-  const [formAge, setFormAge] = useState('');
-  const [formGender, setFormGender] = useState('Male');
   const [formCity, setFormCity] = useState('');
-  const [formSpend, setFormSpend] = useState('0');
-  const [formOrders, setFormOrders] = useState('0');
-  const [formCategories, setFormCategories] = useState('');
+  const [formState, setFormState] = useState('');
+  const [formTotalOrders, setFormTotalOrders] = useState('0');
+  const [formTotalSpent, setFormTotalSpent] = useState('0');
+  const [formAvgOrderValue, setFormAvgOrderValue] = useState('0');
+  const [formLastOrderAmount, setFormLastOrderAmount] = useState('0');
+  const [formLoyaltyPoints, setFormLoyaltyPoints] = useState('0');
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -66,21 +73,27 @@ export default function Customers() {
     fetchCustomers();
   }, [page, search, city, gender]);
 
+  const resetForm = () => {
+    setFormFirstName('');
+    setFormLastName('');
+    setFormEmail('');
+    setFormPhone('');
+    setFormCity('');
+    setFormState('');
+    setFormTotalOrders('0');
+    setFormTotalSpent('0');
+    setFormAvgOrderValue('0');
+    setFormLastOrderAmount('0');
+    setFormLoyaltyPoints('0');
+  };
+
   const handleOpenAddModal = () => {
     if (!canEdit) {
       toast.error('Guest mode is read-only. Login to manage customer records.');
       return;
     }
     setSelectedCustomer(null);
-    setFormName('');
-    setFormEmail('');
-    setFormPhone('');
-    setFormAge('');
-    setFormGender('Male');
-    setFormCity('');
-    setFormSpend('0');
-    setFormOrders('0');
-    setFormCategories('');
+    resetForm();
     setModalOpen(true);
   };
 
@@ -90,15 +103,17 @@ export default function Customers() {
       return;
     }
     setSelectedCustomer(c);
-    setFormName(c.name);
-    setFormEmail(c.email);
+    setFormFirstName(c.first_name || '');
+    setFormLastName(c.last_name || '');
+    setFormEmail(c.email || '');
     setFormPhone(c.phone || '');
-    setFormAge(String(c.age));
-    setFormGender(c.gender);
-    setFormCity(c.city);
-    setFormSpend(String(c.totalSpend));
-    setFormOrders(String(c.purchaseCount));
-    setFormCategories(c.productCategories?.join(', ') || '');
+    setFormCity(c.city || '');
+    setFormState(c.state || '');
+    setFormTotalOrders(String(c.total_orders ?? c.purchaseCount ?? 0));
+    setFormTotalSpent(String(c.total_spent ?? c.totalSpend ?? 0));
+    setFormAvgOrderValue(String(c.average_order_value ?? 0));
+    setFormLastOrderAmount(String(c.last_order_amount ?? 0));
+    setFormLoyaltyPoints(String(c.loyalty_points ?? 0));
     setModalOpen(true);
   };
 
@@ -108,17 +123,26 @@ export default function Customers() {
       toast.error('Guest mode is read-only. Login to save customer changes.');
       return;
     }
+
+    const totalOrders = Number(formTotalOrders) || 0;
+    const totalSpent = Number(formTotalSpent) || 0;
+    // Auto-calc average order value if user leaves it blank/zero but has orders
+    const avgOrderValue =
+      Number(formAvgOrderValue) || (totalOrders > 0 ? totalSpent / totalOrders : 0);
+
+    // Field names match backend Prisma schema exactly
     const payload = {
-      name: formName,
+      first_name: formFirstName,
+      last_name: formLastName,
       email: formEmail,
       phone: formPhone,
-      age: parseInt(formAge) || 30,
-      gender: formGender,
       city: formCity,
-      totalSpend: parseFloat(formSpend) || 0,
-      purchaseCount: parseInt(formOrders) || 0,
-      productCategories: formCategories.split(',').map(s => s.trim()).filter(Boolean),
-      lastPurchaseDate: new Date().toISOString().split('T')[0]
+      state: formState,
+      total_orders: totalOrders,
+      total_spent: totalSpent,
+      average_order_value: avgOrderValue,
+      last_order_amount: Number(formLastOrderAmount) || 0,
+      loyalty_points: Number(formLoyaltyPoints) || 0
     };
 
     try {
@@ -133,6 +157,20 @@ export default function Customers() {
       fetchCustomers();
     } catch (error) {
       toast.error('Failed to save customer data');
+    }
+  };
+
+  const handleViewCustomer = async (c) => {
+    setViewModalOpen(true);
+    setViewLoading(true);
+    try {
+      const data = await customerAPI.getCustomerById(c.id);
+      setViewCustomer(data);
+    } catch (error) {
+      toast.error('Failed to load customer details');
+      setViewCustomer(c); // fallback to row data already in table
+    } finally {
+      setViewLoading(false);
     }
   };
 
@@ -254,11 +292,11 @@ export default function Customers() {
           <div className="flex items-center gap-6 text-[11px] text-slate-400 font-semibold">
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              Headers: name, email, phone, age, gender, city
+              Headers: customer_id, first_name, last_name, email, phone, city, state
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-              totalSpend, purchaseCount, lastPurchaseDate
+              total_orders, total_spent, average_order_value, last_order_amount, loyalty_points
             </span>
           </div>
         </div>
@@ -296,7 +334,7 @@ export default function Customers() {
               <option value="Ahmedabad">Ahmedabad</option>
             </select>
 
-            {/* Gender Filter */}
+            {/* Gender Filter (kept for backwards-compat with API signature; not in DB schema) */}
             <select
               value={gender}
               onChange={(e) => { setGender(e.target.value); setPage(0); }}
@@ -352,13 +390,19 @@ export default function Customers() {
                           {c.segment || 'New Customer'}
                         </span>
                       </td>
-                      <td className="py-4 px-6 text-slate-900 font-bold">Rs {c.totalSpend.toLocaleString()}</td>
+                      <td className="py-4 px-6 text-slate-900 font-bold">Rs {Number(c.totalSpend || 0).toLocaleString()}</td>
                       <td className="py-4 px-6 text-slate-500">{c.purchaseCount}</td>
                       <td className="py-4 px-6 text-slate-400 text-xs font-normal">
-                        {c.lastPurchaseDate ? `${c.lastPurchaseDate} (mock)` : 'No purchase'}
+                        {c.lastPurchaseDate ? `${c.lastPurchaseDate}` : 'No purchase'}
                       </td>
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleViewCustomer(c)}
+                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all duration-200"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
                           <button
                             onClick={() => handleOpenEditModal(c)}
                             className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200"
@@ -423,16 +467,29 @@ export default function Customers() {
             <form onSubmit={handleSaveCustomer} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Full Name</label>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">First Name</label>
                   <input
                     type="text"
                     required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Ravi Kumar"
+                    value={formFirstName}
+                    onChange={(e) => setFormFirstName(e.target.value)}
+                    placeholder="Ravi"
                     className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Last Name</label>
+                  <input
+                    type="text"
+                    value={formLastName}
+                    onChange={(e) => setFormLastName(e.target.value)}
+                    placeholder="Kumar"
+                    className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Email Address</label>
                   <input
@@ -444,31 +501,19 @@ export default function Customers() {
                     className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Age</label>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Phone</label>
                   <input
-                    type="number"
-                    required
-                    value={formAge}
-                    onChange={(e) => setFormAge(e.target.value)}
-                    placeholder="34"
+                    type="text"
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value)}
+                    placeholder="+91 999999"
                     className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Gender</label>
-                  <select
-                    value={formGender}
-                    onChange={(e) => setFormGender(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
-                  >
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                  </select>
-                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">City</label>
                   <input
@@ -480,48 +525,68 @@ export default function Customers() {
                     className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5 col-span-1">
-                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Phone</label>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">State</label>
                   <input
                     type="text"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="+91 999999"
+                    value={formState}
+                    onChange={(e) => setFormState(e.target.value)}
+                    placeholder="Delhi"
                     className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
                   />
                 </div>
-                <div className="space-y-1.5 col-span-1">
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Total Orders</label>
+                  <input
+                    type="number"
+                    value={formTotalOrders}
+                    onChange={(e) => setFormTotalOrders(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Total Spent (Rs)</label>
                   <input
                     type="number"
-                    value={formSpend}
-                    onChange={(e) => setFormSpend(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
-                  />
-                </div>
-                <div className="space-y-1.5 col-span-1">
-                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Orders</label>
-                  <input
-                    type="number"
-                    value={formOrders}
-                    onChange={(e) => setFormOrders(e.target.value)}
+                    value={formTotalSpent}
+                    onChange={(e) => setFormTotalSpent(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Product Categories (Comma separated)</label>
-                <input
-                  type="text"
-                  value={formCategories}
-                  onChange={(e) => setFormCategories(e.target.value)}
-                  placeholder="Electronics, Apparel, Beauty"
-                  className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Avg Order Value</label>
+                  <input
+                    type="number"
+                    value={formAvgOrderValue}
+                    onChange={(e) => setFormAvgOrderValue(e.target.value)}
+                    placeholder="Auto-calculated if left 0"
+                    className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Last Order Amount</label>
+                  <input
+                    type="number"
+                    value={formLastOrderAmount}
+                    onChange={(e) => setFormLastOrderAmount(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Loyalty Points</label>
+                  <input
+                    type="number"
+                    value={formLoyaltyPoints}
+                    onChange={(e) => setFormLoyaltyPoints(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200/80 focus:border-primary-500 rounded-xl py-2 px-3 text-slate-800 text-sm outline-none transition-all"
+                  />
+                </div>
               </div>
 
               {/* Submit Buttons */}
@@ -541,6 +606,102 @@ export default function Customers() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* View (Read) Modal */}
+      {viewModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-100 w-full max-w-lg rounded-3xl p-6 shadow-2xl animate-scale-in text-left flex flex-col gap-5 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="text-xl font-extrabold text-slate-900">Customer Details</h3>
+              <button
+                onClick={() => { setViewModalOpen(false); setViewCustomer(null); }}
+                className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {viewLoading ? (
+              <div className="py-12 text-center text-slate-400 font-medium animate-pulse">
+                Loading customer details...
+              </div>
+            ) : viewCustomer ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl font-black text-slate-900">{viewCustomer.name}</span>
+                  <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wide uppercase ${getSegmentBadgeClass(viewCustomer.segment)}`}>
+                    {viewCustomer.segment || 'New Customer'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Email</p>
+                    <p className="font-semibold text-slate-700">{viewCustomer.email || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Phone</p>
+                    <p className="font-semibold text-slate-700">{viewCustomer.phone || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">City</p>
+                    <p className="font-semibold text-slate-700">{viewCustomer.city || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">State</p>
+                    <p className="font-semibold text-slate-700">{viewCustomer.state || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Total Orders</p>
+                    <p className="font-semibold text-slate-700">{viewCustomer.total_orders ?? viewCustomer.purchaseCount ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Total Spent</p>
+                    <p className="font-semibold text-slate-700">Rs {Number(viewCustomer.total_spent ?? viewCustomer.totalSpend ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Avg Order Value</p>
+                    <p className="font-semibold text-slate-700">Rs {Number(viewCustomer.average_order_value ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Last Order Amount</p>
+                    <p className="font-semibold text-slate-700">Rs {Number(viewCustomer.last_order_amount ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Loyalty Points</p>
+                    <p className="font-semibold text-slate-700">{viewCustomer.loyalty_points ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Last Purchase</p>
+                    <p className="font-semibold text-slate-700">{viewCustomer.lastPurchaseDate || 'No purchase'}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+                  <button
+                    onClick={() => { setViewModalOpen(false); setViewCustomer(null); }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all duration-200"
+                  >
+                    Close
+                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        setViewModalOpen(false);
+                        handleOpenEditModal(viewCustomer);
+                      }}
+                      className="glow-btn px-6 py-2 bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-primary-500/20 transition-all duration-200"
+                    >
+                      Edit Customer
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-slate-400 font-medium">No data found.</div>
+            )}
           </div>
         </div>
       )}

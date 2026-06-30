@@ -64,7 +64,67 @@ export const uploadCustomers = async (req, res) => {
     res.status(500).json({ error: "Server error during upload" });
   }
 };
+export const updateCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    const {
+      customer_id,
+      first_name,
+      last_name,
+      email,
+      phone,
+      total_orders,
+      total_spent,
+      average_order_value,
+      last_order_amount,
+      city,
+      state,
+      loyalty_points
+    } = req.body;
+
+    // Check customer exists
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { id }
+    });
+
+    if (!existingCustomer) {
+      return res.status(404).json({
+        error: "Customer not found"
+      });
+    }
+
+    const updatedCustomer = await prisma.customer.update({
+      where: { id },
+      data: {
+        customer_id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        total_orders: Number(total_orders) || 0,
+        total_spent: Number(total_spent) || 0,
+        average_order_value: Number(average_order_value) || 0,
+        last_order_amount: Number(last_order_amount) || 0,
+        city,
+        state,
+        loyalty_points: Number(loyalty_points) || 0
+      }
+    });
+
+    res.status(200).json({
+      message: "Customer updated successfully",
+      customer: updatedCustomer
+    });
+
+  } catch (error) {
+    console.error("Update Error:", error);
+
+    res.status(500).json( {
+      error: error.message
+    });
+  }
+};
 export const getCustomers = async (req, res) => {
   try {
     const customers = await prisma.customer.findMany({
@@ -76,18 +136,25 @@ export const getCustomers = async (req, res) => {
       },
       take: 100 // Limit for now
     });
-    
+
     // Map to frontend expected format
     const formatted = customers.map(c => ({
       id: c.id,
+      customer_id: c.customer_id,
       name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.customer_id,
+      first_name: c.first_name || '',
+      last_name: c.last_name || '',
       email: c.email || '',
       phone: c.phone || '',
-      age: 30, // Mock age if not present
-      gender: c.gender || 'Unknown',
       city: c.city || 'Unknown',
+      state: c.state || '',
       totalSpend: c.total_spent,
       purchaseCount: c.total_orders,
+      total_orders: c.total_orders,
+      total_spent: c.total_spent,
+      average_order_value: c.average_order_value,
+      last_order_amount: c.last_order_amount,
+      loyalty_points: c.loyalty_points,
       lastPurchaseDate: c.last_purchase_date ? c.last_purchase_date.toISOString().split('T')[0] : null,
       segment: c.segment ? c.segment.name : 'New Customer'
     }));
@@ -100,13 +167,78 @@ export const getCustomers = async (req, res) => {
       number: 0
     });
   } catch (error) {
-  console.error("========== DATABASE ERROR ==========");
-  console.error(error);
-  console.error("===================================");
+    console.error("========== DATABASE ERROR ==========");
+    console.error(error);
+    console.error("===================================");
 
-  res.status(500).json({
-    error: error.message,
-    details: error
-  });
-}
+    res.status(500).json({
+      error: error.message,
+      details: error
+    });
+  }
+};
+export const getCustomerById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      include: { segment: true }
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found" });
+    }
+
+    const formatted = {
+      id: customer.id,
+      customer_id: customer.customer_id,
+      name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || customer.customer_id,
+      first_name: customer.first_name || '',
+      last_name: customer.last_name || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      city: customer.city || 'Unknown',
+      state: customer.state || '',
+      totalSpend: customer.total_spent,
+      purchaseCount: customer.total_orders,
+      total_orders: customer.total_orders,
+      total_spent: customer.total_spent,
+      average_order_value: customer.average_order_value,
+      last_order_amount: customer.last_order_amount,
+      loyalty_points: customer.loyalty_points,
+      lastPurchaseDate: customer.last_purchase_date
+        ? customer.last_purchase_date.toISOString().split('T')[0]
+        : null,
+      segment: customer.segment ? customer.segment.name : 'New Customer'
+    };
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error("Get Customer By Id Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const deleteCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { id }
+    });
+
+    if (!existingCustomer) {
+      return res.status(404).json({ error: "Customer not found" });
+    }
+
+    await prisma.customer.delete({
+      where: { id }
+    });
+
+    res.status(200).json({ message: "Customer deleted successfully" });
+  } catch (error) {
+    console.error("Delete Customer Error:", error);
+    res.status(500).json({ error: error.message });
+  }
 };

@@ -301,21 +301,35 @@ export const customerAPI = {
     });
     return response.data;
   },
+
   createCustomer: async (customer) => {
     ensureAuthenticatedMode();
     const response = await apiClient.post('/customers', customer);
     return response.data;
   },
+
   updateCustomer: async (id, customer) => {
     ensureAuthenticatedMode();
     const response = await apiClient.put(`/customers/${id}`, customer);
     return response.data;
   },
+
+  getCustomerById: async (id) => {
+    if (isGuestUser()) {
+      const customer = getLocalCustomers().find(c => c.id === id);
+      if (!customer) throw new Error('Customer not found');
+      return customer;
+    }
+    const response = await apiClient.get(`/customers/${id}`);
+    return response.data;
+  },
+
   deleteCustomer: async (id) => {
     ensureAuthenticatedMode();
     await apiClient.delete(`/customers/${id}`);
     return true;
   },
+
   bulkImport: async (file) => {
     ensureAuthenticatedMode();
     const formData = new FormData();
