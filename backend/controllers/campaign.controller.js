@@ -4,8 +4,21 @@ const prisma = new PrismaClient();
 
 export const createCampaign = async (req, res) => {
   try {
-    const { name, type, content, segmentId } = req.body;
+//     // const { name, type, content, segmentId } = req.body;
+//     const type = channel;
+// const content = message;
+// const segmentId = targetSegmentId;
+// console.log(req.body);
+const {
+  name,
+  channel,
+  message,
+  targetSegmentId
+} = req.body;
 
+const type = channel;
+const content = message;
+const segmentId = targetSegmentId;
     // Create the campaign
     const campaign = await prisma.campaign.create({
       data: {

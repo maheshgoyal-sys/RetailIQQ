@@ -31,12 +31,14 @@ export default function Segments() {
     }
 
     setExpandedSegment(segName);
-    
+
     // Fetch customers in this segment
     setLoadingCustomers(true);
     try {
       // Fetch matching segment customers from database (max 10 for the UI list)
       const res = await customerAPI.getCustomers(0, 10, '', '', '', segName);
+      // Debug: check actual shape returned by backend if data still looks off
+      // console.log('segment customers raw response:', res.content);
       setSegmentCustomers(prev => ({
         ...prev,
         [segName]: res.content
@@ -55,6 +57,15 @@ export default function Segments() {
     if (s.includes('risk') || s.includes('watch')) return 'bg-amber-100 text-amber-700 border-amber-200';
     if (s.includes('new')) return 'bg-rose-100 text-rose-700 border-rose-200';
     return 'bg-slate-100 text-slate-700 border-slate-200';
+  };
+
+  // Builds "First Last" from backend's snake_case name fields,
+  // with sensible fallbacks if either part is missing.
+  const getCustomerFullName = (cust) => {
+    const first = cust.first_name || '';
+    const last = cust.last_name || '';
+    const full = `${first} ${last}`.trim();
+    return full || cust.email || 'Unnamed customer';
   };
 
   return (
@@ -144,12 +155,19 @@ export default function Segments() {
                                 {segmentCustomers[seg.segmentName].slice(0, 9).map((cust) => (
                                   <div key={cust.id} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm flex flex-col justify-between hover:border-slate-200 transition-all">
                                     <div>
-                                      <p className="font-bold text-slate-900 text-sm">{cust.name}</p>
+                                      <p className="font-bold text-slate-900 text-sm">{getCustomerFullName(cust)}</p>
                                       <p className="text-xs text-slate-400 font-normal mt-0.5">{cust.email}</p>
+                                      {cust.phone && (
+                                        <p className="text-xs text-slate-400 font-normal mt-0.5">{cust.phone}</p>
+                                      )}
                                     </div>
                                     <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-50 text-xs text-slate-500 font-semibold">
-                                      <span>City: <span className="text-slate-800">{cust.city}</span></span>
-                                      <span>Spend: <span className="text-slate-850 font-bold text-slate-900">Rs {cust.totalSpend}</span></span>
+                                      <span>City: <span className="text-slate-800">{cust.city || cust.state || '—'}</span></span>
+                                      <span>Spend: <span className="font-bold text-slate-900">Rs {Number(cust.total_spent || 0).toLocaleString()}</span></span>
+                                    </div>
+                                    <div className="flex justify-between items-center mt-2 text-[11px] text-slate-400 font-medium">
+                                      <span>Orders: <span className="text-slate-700 font-bold">{cust.total_orders ?? 0}</span></span>
+                                      <span>AOV: <span className="text-slate-700 font-bold">Rs {Number(cust.average_order_value || 0).toLocaleString()}</span></span>
                                     </div>
                                   </div>
                                 ))}

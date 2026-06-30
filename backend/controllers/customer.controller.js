@@ -127,15 +127,50 @@ export const updateCustomer = async (req, res) => {
 };
 export const getCustomers = async (req, res) => {
   try {
-    const customers = await prisma.customer.findMany({
-      include: {
-        segment: true
-      },
-      orderBy: {
-        total_spent: 'desc'
-      },
-      take: 100 // Limit for now
-    });
+    const {
+      page = 0,
+      size = 100,
+      search = '',
+      city = '',
+      gender = '', // not in schema, kept for API compat, ignored in filtering
+      segment = ''
+    } = req.query;
+
+    const pageNum = parseInt(page) || 0;
+    const pageSize = parseInt(size) || 100;
+
+    // Build dynamic where clause
+    const where = {};
+
+    if (search) {
+      where.OR = [
+        { first_name: { contains: search, mode: 'insensitive' } },
+        { last_name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (city) {
+      where.city = { equals: city, mode: 'insensitive' };
+    }
+
+    if (segment) {
+      // segment is a relation -> filter via the related Segment's name
+      where.segment = {
+        name: { equals: segment, mode: 'insensitive' }
+      };
+    }
+
+    const [customers, totalElements] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        include: { segment: true },
+        orderBy: { total_spent: 'desc' },
+        skip: pageNum * pageSize,
+        take: pageSize
+      }),
+      prisma.customer.count({ where })
+    ]);
 
     // Map to frontend expected format
     const formatted = customers.map(c => ({
@@ -161,10 +196,10 @@ export const getCustomers = async (req, res) => {
 
     res.status(200).json({
       content: formatted,
-      totalPages: 1,
-      totalElements: formatted.length,
-      size: 100,
-      number: 0
+      totalPages: Math.max(1, Math.ceil(totalElements / pageSize)),
+      totalElements,
+      size: pageSize,
+      number: pageNum
     });
   } catch (error) {
     console.error("========== DATABASE ERROR ==========");
